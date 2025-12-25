@@ -4,6 +4,8 @@ interface QuickPickItem extends vscode.QuickPickItem {
     value: boolean;
 }
 
+const STATE_KEY = 'cursorApiKeyToggle.isUsingCustomKey';
+
 /**
  * Extension activation function
  */
@@ -19,13 +21,25 @@ export function activate(context: vscode.ExtensionContext) {
     statusBarItem.tooltip = 'Click to toggle API Key Mode (Ctrl+Alt+K)';
     context.subscriptions.push(statusBarItem);
 
-    // State variable to track API key mode
-    let isUsingCustomKey = false;
+    /**
+     * Get current state from global storage (synchronized across windows)
+     */
+    function getState(): boolean {
+        return context.globalState.get<boolean>(STATE_KEY, false);
+    }
+
+    /**
+     * Save state to global storage (synchronized across windows)
+     */
+    async function setState(value: boolean): Promise<void> {
+        await context.globalState.update(STATE_KEY, value);
+    }
 
     /**
      * Update status bar item based on current state
      */
     function updateStatusBar() {
+        const isUsingCustomKey = getState();
         if (isUsingCustomKey) {
             statusBarItem.text = '$(key) Custom API';
             statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.prominentBackground');
@@ -64,20 +78,28 @@ export function activate(context: vscode.ExtensionContext) {
                 }
             }
 
-            // If not found in config, try to execute command to get state
-            try {
-                await vscode.commands.executeCommand('aiSettings.usingOpenAIKey.toggle');
-                // If command succeeded, toggle back and assume it was off
-                await vscode.commands.executeCommand('aiSettings.usingOpenAIKey.toggle');
-                return false;
-            } catch {
-                // Command not available, return false (default to Cursor key)
-            }
-
             return false;
         } catch (error) {
             console.error('Error reading setting:', error);
             return false;
+        }
+    }
+
+    /**
+     * Sync state with actual Cursor setting
+     */
+    async function syncWithActualSetting(): Promise<void> {
+        try {
+            const actualValue = await readCurrentSetting();
+            const currentState = getState();
+            
+            // Only update if different to avoid unnecessary writes
+            if (actualValue !== currentState) {
+                await setState(actualValue);
+                updateStatusBar();
+            }
+        } catch (error) {
+            console.error('Error syncing state:', error);
         }
     }
 
@@ -91,41 +113,17 @@ export function activate(context: vscode.ExtensionContext) {
                 // Try to execute Cursor's internal command
                 await vscode.commands.executeCommand('aiSettings.usingOpenAIKey.toggle');
                 
-                // Toggle our internal state
-                isUsingCustomKey = !isUsingCustomKey;
-                updateStatusBar();
-
-                // Show notification
-                const mode = isUsingCustomKey ? 'Custom API Key' : 'Cursor Key';
-                const message = `✅ Switched to ${mode} mode`;
-                
-                vscode.window.showInformationMessage(message, 'OK');
-                
-                // Log to output channel
-                logOutput(message);
+                // Wait a bit for configuration to update, then sync state
+                await new Promise(resolve => setTimeout(resolve, 100));
+                await syncWithActualSetting();
 
             } catch (error) {
                 console.error('Error toggling API key:', error);
                 
-                // If internal command doesn't work, use our local state
-                isUsingCustomKey = !isUsingCustomKey;
+                // If internal command doesn't work, toggle our state manually
+                const currentState = getState();
+                await setState(!currentState);
                 updateStatusBar();
-
-                const mode = isUsingCustomKey ? 'Custom API Key' : 'Cursor Key';
-                const message = `🔄 ${mode} mode (Manual Toggle)`;
-                
-                vscode.window.showInformationMessage(message, 'OK');
-                logOutput(message);
-
-                // Optionally open settings
-                const action = await vscode.window.showWarningMessage(
-                    'For automatic integration, configure API key in settings',
-                    'Open Settings',
-                    'Dismiss'
-                );
-                if (action === 'Open Settings') {
-                    vscode.commands.executeCommand('workbench.action.openSettings', 'ai.usingOpenAIKey');
-                }
             }
         }
     );
@@ -155,30 +153,18 @@ export function activate(context: vscode.ExtensionContext) {
             });
 
             if (selected) {
-                isUsingCustomKey = selected.value;
+                await setState(selected.value);
                 updateStatusBar();
-                
-                const mode = isUsingCustomKey ? 'Custom API Key' : 'Cursor Key';
-                const message = `✅ Set to ${mode} mode`;
-                
-                vscode.window.showInformationMessage(message, 'OK');
-                logOutput(message);
             }
         }
     );
     context.subscriptions.push(manualToggleCommand);
 
     /**
-     * Create output channel for logging
+     * Create output channel for logging (optional, user can open manually)
      */
     const outputChannel = vscode.window.createOutputChannel('Cursor API Key Toggle');
     context.subscriptions.push(outputChannel);
-
-    function logOutput(message: string) {
-        const timestamp = new Date().toLocaleTimeString();
-        outputChannel.appendLine(`[${timestamp}] ${message}`);
-        outputChannel.show(true);
-    }
 
     /**
      * Register command to show output channel
@@ -191,16 +177,27 @@ export function activate(context: vscode.ExtensionContext) {
     );
     context.subscriptions.push(showLogCommand);
 
+    // Listen for configuration changes to sync state automatically
+    const configWatcher = vscode.workspace.onDidChangeConfiguration(async (e) => {
+        // Check if any relevant configuration changed
+        const relevantKeys = [
+            'ai.usingOpenAIKey',
+            'cursor.ai.usingOpenAIKey',
+            'aiSettings.usingOpenAIKey',
+            'cursor.aiSettings.usingOpenAIKey'
+        ];
+        
+        if (relevantKeys.some(key => e.affectsConfiguration(key))) {
+            await syncWithActualSetting();
+        }
+    });
+    context.subscriptions.push(configWatcher);
+
     // Initialize status bar
     updateStatusBar();
-    logOutput('Extension activated');
 
-    // Check current state on activation
-    readCurrentSetting().then((usingCustomKey) => {
-        isUsingCustomKey = usingCustomKey;
-        updateStatusBar();
-        logOutput(`Current mode: ${isUsingCustomKey ? 'Custom API Key' : 'Cursor Key'}`);
-    }).catch((error) => {
+    // Sync state on activation
+    syncWithActualSetting().catch((error) => {
         console.error('Error initializing state:', error);
         updateStatusBar();
     });

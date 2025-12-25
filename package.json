@@ -2,7 +2,7 @@
   "name": "cursor-api-key-toggle",
   "displayName": "Cursor API Key Toggle",
   "description": "Toggle between custom OpenAI API key and Cursor's built-in key with visual indicator",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "publisher": "besliky",
   "engines": {
     "vscode": "^1.80.0"
