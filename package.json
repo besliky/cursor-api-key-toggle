@@ -1,0 +1,68 @@
+{
+  "name": "cursor-api-key-toggle",
+  "displayName": "Cursor API Key Toggle",
+  "description": "Toggle between custom OpenAI API key and Cursor's built-in key with visual indicator",
+  "version": "1.0.0",
+  "publisher": "besliky",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "cursorApiKeyToggle.toggle",
+        "title": "Toggle API Key Mode",
+        "category": "Cursor API Key"
+      },
+      {
+        "command": "cursorApiKeyToggle.manualToggle",
+        "title": "Manual Toggle (Quick Pick)",
+        "category": "Cursor API Key"
+      },
+      {
+        "command": "cursorApiKeyToggle.showLog",
+        "title": "Show Log",
+        "category": "Cursor API Key"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "cursorApiKeyToggle.toggle",
+        "key": "ctrl+alt+k",
+        "mac": "cmd+alt+k",
+        "when": "!terminalFocus"
+      }
+    ],
+    "statusBarCommands": [
+      {
+        "command": "cursorApiKeyToggle.toggle"
+      }
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/besliky/cursor-api-key-toggle"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/vscode": "^1.80.0",
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0",
+    "@vscode/vsce": "^2.22.0"
+  }
+}
